@@ -8,12 +8,12 @@
 
 ## Funcionamiento y flujo del script
 
-    1. **`Componente`**:
-    -
-    -
-    -
+1. **`Componente`**:
+-
+-
+-
     
-    2. **`Componente`**:
-    -
-    -
-    -
+2. **`Componente`**:
+-
+-
+-
