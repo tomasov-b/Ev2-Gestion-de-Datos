@@ -4,17 +4,28 @@
 Preparar el dataset crudo de prestamos para analisis, modelado y una posible carga posterior en PostgreSQL / Supabase.
 
 ## Archivos principales
-- `scriptLimpieza.py`: script de limpieza y transformacion.
+- `scriptLimpieza.py`: limpia y normaliza el dataset crudo (`data/raw/02_loan_data.csv`) y escribe el CSV limpio en `data/processed/02_loan_data_clean.csv`.
+- `script_subir_data.py`: lee el CSV limpio y lo sube por lotes a una tabla PostgreSQL/Supabase (`loan_data_clean`).
+- `database.sql`: script SQL para crear la tabla `loan_data_clean` (tipos, restricciones y índices) antes de la carga.
+- `requirements.txt`: dependencias para ejecutar los scripts (`supabase`, opcionalmente `python-dotenv`).
 - `data/raw/02_loan_data.csv`: entrada cruda.
-- `data/processed/02_loan_data_clean.csv`: salida limpia generada por el script.
+- `data/processed/02_loan_data_clean.csv`: salida limpia generada por `scriptLimpieza.py`.
 - `contexto.txt`: contexto funcional y definicion de variables.
 
-## Que hace el script
-1. Lee el CSV crudo desde `data/raw/`.
-2. Normaliza tipos numericos y valores categoricos.
-3. Elimina registros imposibles o inconsistentes, como edades fuera de rango o experiencia laboral mayor que la edad.
-4. Elimina duplicados exactos despues de la normalizacion.
-5. Guarda el resultado limpio en `data/processed/`.
+## Qué hacen los scripts
+
+- `scriptLimpieza.py`:
+	- Lee el CSV crudo en `data/raw/02_loan_data.csv`.
+	- Normaliza tipos numéricos y categorías, corrige escalados (por ejemplo tasas o porcentajes) y redondea enteros.
+	- Valida reglas (edad entre 18-100, credit_score 300-850, proporciones entre 0 y 1, etc.).
+	- Elimina registros inválidos y duplicados exactos después de la normalización.
+	- Exporta el CSV limpio a `data/processed/02_loan_data_clean.csv`.
+
+- `script_subir_data.py`:
+	- Lee `data/processed/02_loan_data_clean.csv`.
+	- Convierte los campos a los tipos adecuados (ints, floats, booleanos).
+	- Inserta las filas en la tabla `loan_data_clean` en Supabase/Postgres en lotes (por defecto 500 filas).
+	- Muestra progreso por lote e imprime errores por lote si ocurren.
 
 ## Regla de limpieza principal
 - Las columnas originales se mantienen en ingles.
@@ -62,11 +73,28 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 - `if resumen["motivos_eliminacion"]:` en `main()`: solo imprime el detalle de motivos si hubo rechazos.
 
 ## Ejecución
+
+1) Instalar dependencias
+
 ```bash
-python scriptLimpieza.py
+pip install -r requirements.txt
 ```
 
-Tambien se puede indicar rutas personalizadas:
+2) Generar el CSV limpio
+
 ```bash
+python scriptLimpieza.py
+# o con rutas personalizadas:
 python scriptLimpieza.py --entrada data/raw/02_loan_data.csv --salida data/processed/02_loan_data_clean.csv
+```
+
+3) Crear la tabla en PostgreSQL / Supabase
+
+Pega el contenido de database.sql en el editor SQL de Supabase y ejecútalo allí.
+
+
+4) Subir el CSV a Supabase
+
+```bash
+python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_clean
 ```
