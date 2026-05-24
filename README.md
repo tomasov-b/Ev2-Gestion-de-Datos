@@ -84,8 +84,6 @@ pip install -r requirements.txt
 
 ```bash
 python scriptLimpieza.py
-# o con rutas personalizadas:
-python scriptLimpieza.py --entrada data/raw/02_loan_data.csv --salida data/processed/02_loan_data_clean.csv
 ```
 
 3) Crear la tabla en PostgreSQL / Supabase
