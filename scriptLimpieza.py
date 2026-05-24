@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -236,6 +237,54 @@ def procesar_archivo(ruta_entrada: Path, ruta_salida: Path) -> dict[str, Any]:
 	return resumen
 
 
+def configurar_logger(log_detallado: bool, archivo_log: Path | None) -> logging.Logger:
+	logger = logging.getLogger("limpieza_dataset")
+	logger.setLevel(logging.DEBUG if log_detallado else logging.INFO)
+	logger.handlers.clear()
+	logger.propagate = False
+
+	formato = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+
+	handler_consola = logging.StreamHandler()
+	handler_consola.setLevel(logging.DEBUG if log_detallado else logging.INFO)
+	handler_consola.setFormatter(formato)
+	logger.addHandler(handler_consola)
+
+	if archivo_log is not None:
+		archivo_log.parent.mkdir(parents=True, exist_ok=True)
+		handler_archivo = logging.FileHandler(archivo_log, mode="w", encoding="utf-8")
+		handler_archivo.setLevel(logging.DEBUG)
+		handler_archivo.setFormatter(formato)
+		logger.addHandler(handler_archivo)
+
+	return logger
+
+
+def registrar_resumen(logger: logging.Logger, resumen: dict[str, Any], log_detallado: bool) -> None:
+	filas_entrada = resumen["filas_entrada"]
+	filas_salida = resumen["filas_salida"]
+	filas_eliminadas = resumen["filas_eliminadas"]
+
+	logger.info("Proceso completado")
+	logger.info("Archivo de entrada: %s", resumen["ruta_entrada"])
+	logger.info("Archivo limpio: %s", resumen["ruta_salida"])
+	logger.info("Filas de entrada: %s", filas_entrada)
+	logger.info("Filas de salida: %s", filas_salida)
+	logger.info("Filas eliminadas: %s", filas_eliminadas)
+
+	motivos = resumen["motivos_eliminacion"]
+	if motivos:
+		logger.info("Motivos de eliminacion:")
+		for motivo, cantidad in sorted(motivos.items()):
+			logger.info("- %s: %s", motivo, cantidad)
+
+	if log_detallado and filas_entrada > 0:
+		porcentaje_conservado = (filas_salida / filas_entrada) * 100
+		porcentaje_eliminado = (filas_eliminadas / filas_entrada) * 100
+		logger.debug("Porcentaje conservado: %.2f%%", porcentaje_conservado)
+		logger.debug("Porcentaje eliminado: %.2f%%", porcentaje_eliminado)
+
+
 def construir_rutas_por_defecto() -> tuple[Path, Path]:
 	base = Path(__file__).resolve().parent
 	ruta_entrada = base / "data" / "raw" / "02_loan_data.csv"
@@ -261,22 +310,26 @@ def parsear_argumentos() -> argparse.Namespace:
 		default=ruta_salida_defecto,
 		help="Ruta del archivo CSV limpio.",
 	)
+	parser.add_argument(
+		"--log-detallado",
+		action="store_true",
+		help="Activa un log mas detallado con metricas adicionales.",
+	)
+	parser.add_argument(
+		"--archivo-log",
+		type=Path,
+		default=None,
+		help="Ruta opcional para guardar el log de ejecucion.",
+	)
 	return parser.parse_args()
 
 
 def main() -> None:
 	argumentos = parsear_argumentos()
+	logger = configurar_logger(argumentos.log_detallado, argumentos.archivo_log)
+	logger.info("Iniciando proceso de limpieza de datos")
 	resumen = procesar_archivo(argumentos.entrada, argumentos.salida)
-
-	print("Proceso completado")
-	print(f"Filas de entrada: {resumen['filas_entrada']}")
-	print(f"Filas de salida: {resumen['filas_salida']}")
-	print(f"Filas eliminadas: {resumen['filas_eliminadas']}")
-	if resumen["motivos_eliminacion"]:
-		print("Motivos de eliminacion:")
-		for motivo, cantidad in sorted(resumen["motivos_eliminacion"].items()):
-			print(f"- {motivo}: {cantidad}")
-	print(f"Archivo limpio guardado en: {resumen['ruta_salida']}")
+	registrar_resumen(logger, resumen, argumentos.log_detallado)
 
 
 if __name__ == "__main__":

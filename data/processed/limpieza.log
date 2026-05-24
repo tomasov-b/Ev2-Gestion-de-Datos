@@ -1,0 +1,11 @@
+2026-05-24 16:52:58 | INFO | Iniciando proceso de limpieza de datos
+2026-05-24 16:52:58 | INFO | Proceso completado
+2026-05-24 16:52:58 | INFO | Archivo de entrada: C:\Users\tomas\OneDrive\Desktop\Ev2GestionDeDatos\Ev2-Gestion-de-Datos\data\raw\02_loan_data.csv
+2026-05-24 16:52:58 | INFO | Archivo limpio: C:\Users\tomas\OneDrive\Desktop\Ev2GestionDeDatos\Ev2-Gestion-de-Datos\data\processed\02_loan_data_clean.csv
+2026-05-24 16:52:58 | INFO | Filas de entrada: 45000
+2026-05-24 16:52:58 | INFO | Filas de salida: 44993
+2026-05-24 16:52:58 | INFO | Filas eliminadas: 7
+2026-05-24 16:52:58 | INFO | Motivos de eliminacion:
+2026-05-24 16:52:58 | INFO | - edad_fuera_de_rango: 7
+2026-05-24 16:52:58 | DEBUG | Porcentaje conservado: 99.98%
+2026-05-24 16:52:58 | DEBUG | Porcentaje eliminado: 0.02%
