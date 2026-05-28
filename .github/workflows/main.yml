@@ -1,0 +1,48 @@
+name: Data Pipeline Testing
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-scripts:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout del código
+      uses: actions/checkout@v4
+
+    - name: Configurar entorno Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10" 
+
+    - name: Instalar dependencias
+      run: |
+        python -m pip install --upgrade pip
+        pip install supabase
+
+    - name: Crear directorios y datos de prueba simulados
+      run: |
+        # Recreamos la estructura de carpetas que esperan tus scripts
+        mkdir -p data/raw data/processed
+        
+        # Inyectamos una fila de datos con errores intencionales de formato para probar la limpieza
+        echo "person_age,person_gender,person_education,person_income,person_emp_exp,person_home_ownership,loan_amnt,loan_intent,loan_int_rate,loan_percent_income,cb_person_cred_hist_length,credit_score,previous_loan_defaults_on_file,loan_status" > data/raw/02_loan_data.csv
+        echo " 25 , female, Bachelor ,65000,2, RENT ,25000, PERSONAL ,10.5,0.38,4,750, No , 0" >> data/raw/02_loan_data.csv
+
+    - name: Test 1 - Ejecutar validación y limpieza de datos
+      run: |
+        python scriptLimpieza.py
+        
+    - name: Test 2 - Verificar generación de archivo procesado
+      run: |
+        test -f data/processed/02_loan_data_clean.csv
+        echo "El archivo limpio se generó correctamente."
+
+    - name: Test 3 - Ejecutar carga a Supabase
+      run: |
+        # Usamos --tabla loan_data_test para que las pruebas del CI no sobreescriban tu tabla principal.
+        python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_test --batch 10
