@@ -7,6 +7,7 @@ para BI, registra tiempos y memoria, y guarda metricas en JSON.
 """
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -315,7 +316,7 @@ def evaluar_modelo(y_true: np.ndarray, y_prob: np.ndarray, threshold: float) -> 
 		"f1": float(f1_score(y_true, y_pred, zero_division=0)),
 		"confusion_matrix": cm.tolist(),
 		"classification_report": classification_report(y_true, y_pred, zero_division=0, output_dict=True),
-		"predictions": y_pred,
+		"predictions": y_pred.tolist(),
 	}
 
 
@@ -363,6 +364,7 @@ def guardar_graficos_resultados(y_true: np.ndarray, y_prob: np.ndarray, y_pred: 
 
 def guardar_metadatos_bi(df: pd.DataFrame, y_pred: np.ndarray, output_dir: Path) -> None:
 	output_dir.mkdir(parents=True, exist_ok=True)
+	y_pred = np.asarray(y_pred)
 	bi_df = df[["person_gender", "person_age", TARGET_COLUMN]].copy()
 	bi_df["approval"] = (y_pred == 0).astype(int)
 	bi_df["rejection"] = 1 - bi_df["approval"]
@@ -383,6 +385,21 @@ def guardar_metricas_json(metricas: dict[str, Any], output_dir: Path) -> Path:
 	with archivo.open("w", encoding="utf-8") as f:
 		json.dump(metricas, f, indent=2, ensure_ascii=True)
 	return archivo
+
+
+def es_clave_service_role(clave: str | None) -> bool:
+	if not clave:
+		return False
+	partes = clave.split(".")
+	if len(partes) < 2:
+		return False
+	payload = partes[1]
+	padding = "=" * (-len(payload) % 4)
+	try:
+		contenido = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
+		return json.loads(contenido).get("role") == "service_role"
+	except Exception:
+		return False
 
 
 def guardar_perfil_base(df: pd.DataFrame, output_dir: Path) -> Path:
@@ -449,8 +466,8 @@ def subir_resultados_a_supabase(metricas: dict[str, Any], feature_names: list[st
 	if create_client is None:
 		return
 	supabase_url = os.getenv("SUPABASE_URL")
-	supabase_key = os.getenv("SUPABASE_KEY")
-	if not supabase_url or not supabase_key:
+	supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+	if not supabase_url or not supabase_key or not es_clave_service_role(supabase_key):
 		return
 	cliente = create_client(supabase_url, supabase_key)
 	run_payload, feature_payload = construir_payload_supabase(metricas, feature_names, coefficients, run_name)

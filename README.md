@@ -29,7 +29,7 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 	- Convierte los campos a los tipos adecuados (ints, floats, booleanos).
 	- Valida la estructura del CSV antes de insertar.
 	- Inserta las filas en la tabla `loan_data_clean` en Supabase/Postgres en lotes (por defecto 500 filas).
-	- Usa `SUPABASE_URL` y `SUPABASE_KEY` desde variables de entorno para evitar secretos embebidos.
+	- Usa `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` para escritura; la `SUPABASE_KEY` anónima no sirve cuando RLS está activa.
 	- Permite seudonimizar columnas antes de la carga con `--hash-columns`.
 
 - `train_loan_default_model.py`:
@@ -127,7 +127,7 @@ Para leer desde Supabase:
 
 ```bash
 set SUPABASE_URL=tu_url
-set SUPABASE_KEY=tu_clave
+set SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio
 python train_loan_default_model.py --source supabase --supabase-table loan_data_clean --sync-supabase
 ```
 
@@ -167,4 +167,5 @@ python predict_loan_default.py --source supabase --supabase-table loan_data_clea
 
 - Las columnas sensibles pueden seudonimizarse antes de cargar o entrenar usando `--hash-columns` o `--sensitive-columns`.
 - `database.sql` habilita RLS en las tablas operativas y de métricas para permitir lectura BI controlada.
+- Las escrituras a tablas con RLS deben hacerse con `SUPABASE_SERVICE_ROLE_KEY`; la clave anónima queda para lectura BI o clientes de solo lectura.
 - Metabase puede conectarse a PostgreSQL/Supabase y consumir `loan_data_clean`, `loan_model_runs`, `loan_model_feature_importance`, `loan_model_predictions` y las vistas `vw_loan_model_dashboard`, `vw_loan_model_confusion_matrix`, `vw_loan_model_fairness_by_gender`, `vw_loan_model_fairness_by_age_group` y `vw_loan_model_prediction_summary` para construir dashboards de rendimiento, interpretabilidad, equidad y seguimiento operativo.

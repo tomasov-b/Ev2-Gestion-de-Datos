@@ -12,11 +12,82 @@ import csv
 import hashlib
 import logging
 import os
+import base64
+import json
 import time
 from pathlib import Path
 from typing import Any, Dict, List
 
 from supabase import create_client
+
+try:
+	from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - entorno sin python-dotenv
+	def load_dotenv(*args, **kwargs):
+		return False
+
+
+def normalizar_valor_entorno(nombre: str, valor: str | None) -> str | None:
+	if valor is None:
+		return None
+	texto = valor.strip().strip('"').strip("'")
+	if nombre == "SUPABASE_URL":
+		return texto.rstrip("/")
+	if nombre == "SUPABASE_KEY":
+		if texto.startswith("eyJ"):
+			return texto
+		indice = texto.find("eyJ")
+		if indice != -1:
+			return texto[indice:]
+		return texto
+	return texto
+
+
+def es_clave_service_role(clave: str | None) -> bool:
+	if not clave:
+		return False
+	partes = clave.split(".")
+	if len(partes) < 2:
+		return False
+	payload = partes[1]
+	padding = "=" * (-len(payload) % 4)
+	try:
+		contenido = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
+		return json.loads(contenido).get("role") == "service_role"
+	except Exception:
+		return False
+
+
+def cargar_env_local(logger: logging.Logger | None = None) -> bool:
+	candidatos = [Path.cwd() / ".env", Path(__file__).resolve().parent / ".env"]
+	for archivo in candidatos:
+		if not archivo.exists():
+			continue
+		cargado = False
+		try:
+			cargado = bool(load_dotenv(archivo))
+		except TypeError:
+			cargado = bool(load_dotenv())
+
+		if cargado:
+			if logger:
+				logger.info("Variables cargadas desde: %s", archivo)
+			return True
+
+		with archivo.open(encoding="utf-8") as f:
+			for linea in f:
+				linea = linea.strip()
+				if not linea or linea.startswith("#") or "=" not in linea:
+					continue
+				clave, valor = linea.split("=", 1)
+				clave = clave.strip()
+				valor = valor.strip()
+				if clave in {"SUPABASE_URL", "SUPABASE_KEY"}:
+					os.environ[clave] = normalizar_valor_entorno(clave, valor) or ""
+			if logger:
+				logger.info("Variables cargadas manualmente desde: %s", archivo)
+			return True
+	return False
 
 
 COLUMNAS_ESPERADAS = [
@@ -127,11 +198,26 @@ def validar_columnas(registros: List[Dict[str, Any]], logger: logging.Logger) ->
 
 
 def crear_cliente_supabase():
-	supabase_url = os.getenv("SUPABASE_URL")
-	supabase_key = os.getenv("SUPABASE_KEY")
-	if not supabase_url or not supabase_key:
-		raise EnvironmentError("Faltan las variables SUPABASE_URL y/o SUPABASE_KEY en el entorno.")
-	return create_client(supabase_url, supabase_key)
+	logger = logging.getLogger("subida_supabase")
+	cargar_env_local(logger)
+	supabase_url = normalizar_valor_entorno("SUPABASE_URL", os.getenv("SUPABASE_URL"))
+	supabase_write_key = normalizar_valor_entorno("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+	if not supabase_write_key:
+		supabase_write_key = normalizar_valor_entorno("SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
+	if not supabase_url or not supabase_write_key:
+		raise EnvironmentError(
+			"Faltan las variables SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en el entorno. "
+			"Para escribir en tablas con RLS necesitas una clave de servicio, no la anon key."
+		)
+	if not es_clave_service_role(supabase_write_key):
+		raise EnvironmentError(
+			"La clave encontrada no parece ser service_role. "
+			"Con RLS habilitado, la insercion requiere SUPABASE_SERVICE_ROLE_KEY. "
+			"No uses la anon key para este script de carga."
+		)
+	os.environ["SUPABASE_URL"] = supabase_url
+	os.environ["SUPABASE_SERVICE_ROLE_KEY"] = supabase_write_key
+	return create_client(supabase_url, supabase_write_key)
 
 
 def insertar_lotes(supabase, tabla: str, filas: List[Dict[str, Any]], lote: int = 500, reintentos: int = 3, logger: logging.Logger | None = None) -> None:
