@@ -1,0 +1,9 @@
+__pycache__
+.venv
+.git
+.github
+artifacts
+data/processed/*.log
+data/processed/*.png
+data/processed/*.json
+data/processed/*.joblib

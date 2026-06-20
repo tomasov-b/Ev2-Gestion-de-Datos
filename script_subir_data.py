@@ -1,21 +1,53 @@
 from __future__ import annotations
 
-"""Sube un CSV limpio a Supabase.
+"""Sube un CSV limpio a Supabase con validación, reintentos y logging.
 
-Requiere las variables de entorno `SUPABASE_URL` y `SUPABASE_KEY`.
+Requiere `SUPABASE_URL` y `SUPABASE_KEY` en el entorno.
 Uso:
 	python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_clean
-
-El script convierte tipos básicos y hace inserciones en lotes.
 """
 
 import argparse
 import csv
+import hashlib
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
 from supabase import create_client
+
+
+COLUMNAS_ESPERADAS = [
+	"person_age",
+	"person_gender",
+	"person_education",
+	"person_income",
+	"person_emp_exp",
+	"person_home_ownership",
+	"loan_amnt",
+	"loan_intent",
+	"loan_int_rate",
+	"loan_percent_income",
+	"cb_person_cred_hist_length",
+	"credit_score",
+	"previous_loan_defaults_on_file",
+	"loan_status",
+]
+
+
+def configurar_logger() -> logging.Logger:
+	logger = logging.getLogger("subida_supabase")
+	logger.setLevel(logging.INFO)
+	logger.handlers.clear()
+	logger.propagate = False
+
+	formato = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+	handler = logging.StreamHandler()
+	handler.setFormatter(formato)
+	logger.addHandler(handler)
+	return logger
 
 
 def to_int(valor: Any) -> int | None:
@@ -41,8 +73,16 @@ def to_bool_yesno(valor: Any) -> bool:
 	return texto in {"yes", "y", "true", "1"}
 
 
-def transformar_registro(reg: Dict[str, Any]) -> Dict[str, Any]:
-	return {
+def hash_value(valor: Any) -> str | None:
+	texto = str(valor).strip()
+	if not texto:
+		return None
+	return hashlib.sha256(texto.encode("utf-8")).hexdigest()
+
+
+def transformar_registro(reg: Dict[str, Any], hash_columns: set[str] | None = None) -> Dict[str, Any]:
+	hash_columns = hash_columns or set()
+	transformado = {
 		"person_age": to_int(reg.get("person_age")),
 		"person_gender": (reg.get("person_gender") or "").strip(),
 		"person_education": (reg.get("person_education") or "").strip(),
@@ -59,6 +99,12 @@ def transformar_registro(reg: Dict[str, Any]) -> Dict[str, Any]:
 		"loan_status": to_int(reg.get("loan_status")),
 	}
 
+	for columna in hash_columns:
+		if columna in reg:
+			transformado[columna] = hash_value(reg.get(columna))
+
+	return transformado
+
 
 def leer_csv(ruta: Path) -> List[Dict[str, Any]]:
 	with ruta.open(newline="", encoding="utf-8") as f:
@@ -66,47 +112,83 @@ def leer_csv(ruta: Path) -> List[Dict[str, Any]]:
 		return [row for row in lector]
 
 
-def insertar_lotes(supabase, tabla: str, filas: List[Dict[str, Any]], lote: int = 500) -> None:
+def validar_columnas(registros: List[Dict[str, Any]], logger: logging.Logger) -> None:
+	if not registros:
+		raise ValueError("El archivo de entrada no contiene filas.")
+
+	columnas = set(registros[0].keys())
+	faltantes = [columna for columna in COLUMNAS_ESPERADAS if columna not in columnas]
+	if faltantes:
+		raise ValueError(f"Faltan columnas obligatorias en el CSV: {faltantes}")
+
+	columnas_extra = sorted(columnas.difference(COLUMNAS_ESPERADAS))
+	if columnas_extra:
+		logger.warning("Se detectaron columnas extra en el CSV: %s", columnas_extra)
+
+
+def crear_cliente_supabase():
+	supabase_url = os.getenv("SUPABASE_URL")
+	supabase_key = os.getenv("SUPABASE_KEY")
+	if not supabase_url or not supabase_key:
+		raise EnvironmentError("Faltan las variables SUPABASE_URL y/o SUPABASE_KEY en el entorno.")
+	return create_client(supabase_url, supabase_key)
+
+
+def insertar_lotes(supabase, tabla: str, filas: List[Dict[str, Any]], lote: int = 500, reintentos: int = 3, logger: logging.Logger | None = None) -> None:
+	logger = logger or logging.getLogger("subida_supabase")
 	total = len(filas)
 	for i in range(0, total, lote):
 		batch = filas[i : i + lote]
-		try:
-			resp = supabase.table(tabla).insert(batch).execute()
-		except Exception as e:
-			print(f"ERROR al insertar lote {i}-{i+len(batch)}: {e}")
-			continue
+		err = None
+		for intento in range(1, reintentos + 1):
+			try:
+				resp = supabase.table(tabla).insert(batch).execute()
+				if hasattr(resp, "error") and resp.error:
+					err = resp.error
+				elif isinstance(resp, dict) and resp.get("error"):
+					err = resp.get("error")
+				else:
+					logger.info("Insertado lote %s-%s (%s filas)", i, i + len(batch), len(batch))
+					break
+			except Exception as exc:
+				err = exc
 
-		# supabase-py puede devolver un objeto o dict con 'error'
-		if hasattr(resp, "error") and resp.error:
-			print(f"Error en respuesta del lote {i}-{i+len(batch)}: {resp.error}")
-		elif isinstance(resp, dict) and resp.get("error"):
-			print(f"Error en respuesta del lote {i}-{i+len(batch)}: {resp.get('error')}")
-		else:
-			print(f"Insertado lote {i}-{i+len(batch)} ({len(batch)} filas)")
+			if intento < reintentos:
+				espera = 2 ** (intento - 1)
+				logger.warning(
+					"Fallo lote %s-%s en intento %s/%s: %s. Reintentando en %s s.",
+					i,
+					i + len(batch),
+					intento,
+					reintentos,
+					err,
+					espera,
+				)
+				time.sleep(espera)
+			else:
+				logger.error("No se pudo insertar el lote %s-%s: %s", i, i + len(batch), err)
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description="Sube CSV a Supabase")
+	parser = argparse.ArgumentParser(description="Sube CSV limpio a Supabase")
 	parser.add_argument("--entrada", type=Path, required=False, default=Path("data/processed/02_loan_data_clean.csv"))
 	parser.add_argument("--tabla", type=str, required=False, default="loan_data_clean")
 	parser.add_argument("--batch", type=int, required=False, default=500)
+	parser.add_argument("--hash-columns", nargs="*", default=[], help="Columnas opcionales a seudonimizar antes de subir")
 	args = parser.parse_args()
 
-	supabase_url = "https://kvgkwvhijkwfhqdvbztw.supabase.co"
-	supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2Z2t3dmhpamt3ZmhxZHZienR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NjgxMDAsImV4cCI6MjA5NTE0NDEwMH0.VE2J6EuP3S_LQgxzyO_duc_JcdeDMRwzP7GUsQXT-oc"
-
-	print(f"Leyendo CSV desde: {args.entrada}")
+	logger = configurar_logger()
+	logger.info("Leyendo CSV desde: %s", args.entrada)
 	registros = leer_csv(args.entrada)
-	print(f"Filas leídas: {len(registros)}")
+	logger.info("Filas leídas: %s", len(registros))
+	validar_columnas(registros, logger)
 
-	registros_transformados = [transformar_registro(r) for r in registros]
+	registros_transformados = [transformar_registro(r, set(args.hash_columns)) for r in registros]
+	supabase = crear_cliente_supabase()
 
-	supabase = create_client(supabase_url, supabase_key)
-
-	print(f"Subiendo a tabla: {args.tabla} en Supabase (batch={args.batch})")
-	insertar_lotes(supabase, args.tabla, registros_transformados, lote=args.batch)
-
-	print("Proceso completado.")
+	logger.info("Subiendo a tabla: %s en Supabase (batch=%s)", args.tabla, args.batch)
+	insertar_lotes(supabase, args.tabla, registros_transformados, lote=args.batch, logger=logger)
+	logger.info("Proceso completado.")
 
 
 if __name__ == "__main__":
