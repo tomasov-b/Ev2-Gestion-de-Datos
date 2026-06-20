@@ -22,7 +22,7 @@ jobs:
     - name: Instalar dependencias
       run: |
         python -m pip install --upgrade pip
-        pip install supabase
+        pip install -r requirements.txt
 
     - name: Crear directorios y datos de prueba simulados
       run: |
@@ -43,6 +43,21 @@ jobs:
         echo "El archivo limpio se generó correctamente."
 
     - name: Test 3 - Ejecutar carga a Supabase
+      if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_KEY != '' }}
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         # Usamos --tabla loan_data_test para que las pruebas del CI no sobreescriban tu tabla principal.
         python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_test --batch 10
+
+    - name: Test 4 - Entrenar modelo localmente
+      run: |
+        python train_loan_default_model.py --source local --input data/processed/02_loan_data_clean.csv --artifacts-dir artifacts/ci --model-output artifacts/ci/model.joblib
+
+    - name: Test 5 - Verificar artefactos del modelo
+      run: |
+        test -f artifacts/ci/metrics/model_metrics.json
+        test -f artifacts/ci/plots/roc_curve.png
+        test -f artifacts/ci/plots/confusion_matrix.png
+        echo "Entrenamiento y artefactos del modelo generados correctamente."

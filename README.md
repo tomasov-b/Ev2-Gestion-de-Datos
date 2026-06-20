@@ -6,7 +6,10 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 ## Archivos principales
 - `scriptLimpieza.py`: limpia y normaliza el dataset crudo (`data/raw/02_loan_data.csv`) y escribe el CSV limpio en `data/processed/02_loan_data_clean.csv`.
 - `script_subir_data.py`: lee el CSV limpio y lo sube por lotes a una tabla PostgreSQL/Supabase (`loan_data_clean`).
+- `train_loan_default_model.py`: entrena y evalua una regresion logistica para prediccion de incumplimiento, genera ROC, matriz de confusion, Gini, importancias y salidas para BI.
+- `predict_loan_default.py`: aplica el modelo entrenado, genera scoring, calcula drift y registra predicciones/eventos en Supabase.
 - `database.sql`: script SQL para crear la tabla `loan_data_clean` (tipos, restricciones y índices) antes de la carga.
+- `Dockerfile`: contenedor para ejecutar el pipeline de entrenamiento de forma reproducible.
 - `requirements.txt`: dependencias para ejecutar los scripts (`supabase`, opcionalmente `python-dotenv`).
 - `data/raw/02_loan_data.csv`: entrada cruda.
 - `data/processed/02_loan_data_clean.csv`: salida limpia generada por `scriptLimpieza.py`.
@@ -24,8 +27,25 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 - `script_subir_data.py`:
 	- Lee `data/processed/02_loan_data_clean.csv`.
 	- Convierte los campos a los tipos adecuados (ints, floats, booleanos).
+	- Valida la estructura del CSV antes de insertar.
 	- Inserta las filas en la tabla `loan_data_clean` en Supabase/Postgres en lotes (por defecto 500 filas).
-	- Muestra progreso por lote e imprime errores por lote si ocurren.
+	- Usa `SUPABASE_URL` y `SUPABASE_KEY` desde variables de entorno para evitar secretos embebidos.
+	- Permite seudonimizar columnas antes de la carga con `--hash-columns`.
+
+- `train_loan_default_model.py`:
+	- Lee el dataset limpio desde archivo local o desde Supabase.
+	- Aplica `StandardScaler` a numéricas y `OneHotEncoder` a categóricas.
+	- Usa `class_weight='balanced'` y permite `SMOTE` si se quiere sobremuestreo.
+	- Divide en entrenamiento/prueba con estratificación.
+	- Genera análisis univariado, boxplots, correlación, matriz de confusión, curva ROC, AUC y Gini.
+	- Registra tiempos de ejecución, memoria RAM y métricas en logs y JSON.
+	- Exporta importancias de variables, fairness por género y grupos de edad, perfil base para drift y el modelo serializado.
+
+- `predict_loan_default.py`:
+	- Carga el modelo entrenado y el perfil base.
+	- Genera predicciones y, si hay etiquetas reales, calcula AUC y Gini en producción.
+	- Evalua deriva por variables numericas y categoricas frente al perfil base.
+	- Guarda predicciones, fairness y drift en archivos locales y, opcionalmente, en Supabase.
 
 ## Regla de limpieza principal
 - Las columnas originales se mantienen en ingles.
@@ -96,3 +116,55 @@ Pega el contenido de database.sql en el editor SQL de Supabase y ejecútalo all�
 ```bash
 python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_clean
 ```
+
+5) Entrenar el modelo
+
+```bash
+python train_loan_default_model.py --source local --input data/processed/02_loan_data_clean.csv
+```
+
+Para leer desde Supabase:
+
+```bash
+set SUPABASE_URL=tu_url
+set SUPABASE_KEY=tu_clave
+python train_loan_default_model.py --source supabase --supabase-table loan_data_clean --sync-supabase
+```
+
+6) Ejecutar con Docker
+
+```bash
+docker build -t loan-risk-model .
+docker run --rm -e SUPABASE_URL=tu_url -e SUPABASE_KEY=tu_clave loan-risk-model
+```
+
+7) Ejecutar scoring e inferencia
+
+```bash
+python predict_loan_default.py --source local --input data/processed/02_loan_data_clean.csv
+```
+
+Con Supabase:
+
+```bash
+python predict_loan_default.py --source supabase --supabase-table loan_data_clean --sync-supabase
+```
+
+## Salidas del entrenamiento
+
+- `artifacts/metrics/model_metrics.json`: AUC, Gini, precisión, recall, F1 y matriz de confusión.
+- `artifacts/plots/roc_curve.png`: curva ROC.
+- `artifacts/plots/confusion_matrix.png`: matriz de confusión.
+- `artifacts/plots/feature_importance.png`: importancia por coeficiente absoluto.
+- `artifacts/bi/fairness_by_gender.csv` y `artifacts/bi/fairness_by_age_group.csv`: insumos para auditoría de equidad en BI.
+- `artifacts/logs/training.log`: trazabilidad de tiempos, memoria y métricas.
+- `artifacts/metrics/baseline_profile.json`: perfil de entrenamiento para monitoreo de drift.
+- `artifacts/inference/predictions/predictions.csv`: scoring por registro.
+- `artifacts/inference/metrics/drift_metrics.json`: indicadores de deriva por variable.
+- `artifacts/logs/inference.log`: trazabilidad del scoring y alertas operativas.
+
+## Seguridad y BI
+
+- Las columnas sensibles pueden seudonimizarse antes de cargar o entrenar usando `--hash-columns` o `--sensitive-columns`.
+- `database.sql` habilita RLS en las tablas operativas y de métricas para permitir lectura BI controlada.
+- Metabase puede conectarse a PostgreSQL/Supabase y consumir `loan_data_clean`, `loan_model_runs`, `loan_model_feature_importance`, `loan_model_predictions` y las vistas `vw_loan_model_dashboard`, `vw_loan_model_confusion_matrix`, `vw_loan_model_fairness_by_gender`, `vw_loan_model_fairness_by_age_group` y `vw_loan_model_prediction_summary` para construir dashboards de rendimiento, interpretabilidad, equidad y seguimiento operativo.
