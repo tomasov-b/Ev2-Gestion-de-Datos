@@ -9,6 +9,7 @@ from __future__ import annotations
 """
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -92,6 +93,21 @@ def configurar_logger(log_file: Path) -> logging.Logger:
 	handler_file.setFormatter(formato)
 	logger.addHandler(handler_file)
 	return logger
+
+
+def es_clave_service_role(clave: str | None) -> bool:
+	if not clave:
+		return False
+	partes = clave.split(".")
+	if len(partes) < 2:
+		return False
+	payload = partes[1]
+	padding = "=" * (-len(payload) % 4)
+	try:
+		contenido = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
+		return json.loads(contenido).get("role") == "service_role"
+	except Exception:
+		return False
 
 
 def captura_recursos() -> ResourceSnapshot:
@@ -260,8 +276,8 @@ def registrar_en_supabase(predictions: pd.DataFrame, metricas: dict[str, Any], d
 	if create_client is None:
 		return
 	supabase_url = os.getenv("SUPABASE_URL")
-	supabase_key = os.getenv("SUPABASE_KEY")
-	if not supabase_url or not supabase_key:
+	supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+	if not supabase_url or not supabase_key or not es_clave_service_role(supabase_key):
 		return
 	cliente = create_client(supabase_url, supabase_key)
 	actual_columna = "loan_status_actual" if "loan_status_actual" in predictions.columns else None
