@@ -3,8 +3,6 @@ __pycache__
 .git
 .github
 artifacts
-data/raw
-data/processed
 
 # Environment / secrets
 .env

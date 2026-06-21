@@ -87,17 +87,14 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 - `if resumen["motivos_eliminacion"]:` en `main()`: solo imprime el detalle de motivos si hubo rechazos.
 
 ## Ejecución
-1) Entrenar el modelo y generar predicciones
+### Ejecución del Pipeline e IA mediante Docker
+
+La solución se encuentra completamente contenerizada y automatizada en un repositorio público de Docker Hub, lo que garantiza la portabilidad absoluta del entorno sin necesidad de instalar dependencias locales de Python de forma manual.
+
+Para descargar y ejecutar el pipeline unificado de entrenamiento y métricas, abra su terminal y ejecute:
 
 ```bash
-python script_entrenamiento.py --source local --input data/processed/02_loan_data_clean.csv
-```
-
-2) Ejecutar con Docker
-
-```bash
-docker build -t loan-risk-model .
-docker run --rm -e SUPABASE_URL=tu_url -e SUPABASE_KEY=tu_clave loan-risk-model
+docker run --rm krlidk/ev2-gestion-de-datos:latest
 ```
 
 ## Salidas del entrenamiento

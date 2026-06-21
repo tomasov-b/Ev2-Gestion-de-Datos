@@ -1,13 +1,22 @@
+# Usar una imagen ligera oficial de Python
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# Evitar archivos .pyc y asegurar logs en tiempo real
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
+# Crear el directorio de trabajo principal
 WORKDIR /app
 
-COPY requirements.txt ./
+# Crear la estructura de carpetas de datos para que el script no falle
+RUN mkdir -p /app/data/raw /app/data/processed /app/docs /app/artifacts
+
+# Copiar e instalar las dependencias
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copiar todo el código del proyecto al contenedor
+COPY . /app/
 
-CMD ["python", "script_entrenamiento.py", "--source", "local"]
+# Comando predeterminado para ejecutar el pipeline de IA
+CMD ["python", "script_entrenamiento.py"]
