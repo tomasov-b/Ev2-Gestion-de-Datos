@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "train_loan_default_model.py", "--source", "local"]
+CMD ["python", "script_entrenamiento.py", "--source", "local"]

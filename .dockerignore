@@ -3,7 +3,25 @@ __pycache__
 .git
 .github
 artifacts
-data/processed/*.log
-data/processed/*.png
-data/processed/*.json
-data/processed/*.joblib
+data/raw
+data/processed
+
+# Environment / secrets
+.env
+.env.*
+
+# Editor / OS files
+.vscode
+.idea
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Models / large artifacts
+*.joblib
+models
+artifacts

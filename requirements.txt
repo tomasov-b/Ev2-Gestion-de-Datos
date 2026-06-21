@@ -1,1 +1,9 @@
 supabase
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+psutil
+joblib
+imbalanced-learn

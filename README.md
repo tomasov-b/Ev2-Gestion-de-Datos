@@ -8,6 +8,7 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 - `script_subir_data.py`: lee el CSV limpio y lo sube por lotes a una tabla PostgreSQL/Supabase (`loan_data_clean`).
 - `train_loan_default_model.py`: entrena y evalua una regresion logistica para prediccion de incumplimiento, genera ROC, matriz de confusion, Gini, importancias y salidas para BI.
 - `predict_loan_default.py`: aplica el modelo entrenado, genera scoring, calcula drift y registra predicciones/eventos en Supabase.
+ - `script_entrenamiento.py`: script único que realiza el entrenamiento del modelo, evaluación y generación de material para BI (ROC, matriz de confusión, métricas, importancias y perfil base), y también ejecuta el scoring/predicción sobre datasets de entrada. Reemplaza a los antiguos `train_loan_default_model.py` y `predict_loan_default.py`.
 - `database.sql`: script SQL para crear la tabla `loan_data_clean` (tipos, restricciones y índices) antes de la carga.
 - `Dockerfile`: contenedor para ejecutar el pipeline de entrenamiento de forma reproducible.
 - `requirements.txt`: dependencias para ejecutar los scripts (`supabase`, opcionalmente `python-dotenv`).
@@ -32,20 +33,13 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 	- Usa `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` para escritura; la `SUPABASE_KEY` anónima no sirve cuando RLS está activa.
 	- Permite seudonimizar columnas antes de la carga con `--hash-columns`.
 
-- `train_loan_default_model.py`:
+ - `script_entrenamiento.py`:
 	- Lee el dataset limpio desde archivo local o desde Supabase.
-	- Aplica `StandardScaler` a numéricas y `OneHotEncoder` a categóricas.
-	- Usa `class_weight='balanced'` y permite `SMOTE` si se quiere sobremuestreo.
-	- Divide en entrenamiento/prueba con estratificación.
-	- Genera análisis univariado, boxplots, correlación, matriz de confusión, curva ROC, AUC y Gini.
-	- Registra tiempos de ejecución, memoria RAM y métricas en logs y JSON.
-	- Exporta importancias de variables, fairness por género y grupos de edad, perfil base para drift y el modelo serializado.
-
-- `predict_loan_default.py`:
-	- Carga el modelo entrenado y el perfil base.
-	- Genera predicciones y, si hay etiquetas reales, calcula AUC y Gini en producción.
-	- Evalua deriva por variables numericas y categoricas frente al perfil base.
-	- Guarda predicciones, fairness y drift en archivos locales y, opcionalmente, en Supabase.
+	- Realiza preprocesamiento (escalado de numéricas y codificación de categóricas), manejo de desequilibrio (`class_weight='balanced'`, opción para sobremuestreo) y separación entrenamiento/prueba con estratificación.
+	- Entrena el modelo (RandomForest / regresión logística según la configuración), evalúa con métricas (AUC, Gini, precisión, recall, F1), y registra logs y métricas en JSON.
+	- Genera y guarda artefactos: curvas ROC, matriz de confusión, importancias de variables, perfiles base para monitoring/drift y salidas para BI.
+	- Ejecuta scoring/predicción sobre datasets de entrada y calcula métricas de inferencia y deriva cuando hay etiquetas disponibles.
+	- Guarda predicciones, fairness y drift en archivos locales y puede integrarse con Supabase si se requiere.
 
 ## Regla de limpieza principal
 - Las columnas originales se mantienen en ingles.
@@ -93,61 +87,17 @@ Preparar el dataset crudo de prestamos para analisis, modelado y una posible car
 - `if resumen["motivos_eliminacion"]:` en `main()`: solo imprime el detalle de motivos si hubo rechazos.
 
 ## Ejecución
-
-1) Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-2) Generar el CSV limpio
+1) Entrenar el modelo y generar predicciones
 
 ```bash
-python scriptLimpieza.py
+python script_entrenamiento.py --source local --input data/processed/02_loan_data_clean.csv
 ```
 
-3) Crear la tabla en PostgreSQL / Supabase
-
-Pega el contenido de database.sql en el editor SQL de Supabase y ejecútalo allí.
-
-
-4) Subir el CSV a Supabase
-
-```bash
-python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_clean
-```
-
-5) Entrenar el modelo
-
-```bash
-python train_loan_default_model.py --source local --input data/processed/02_loan_data_clean.csv
-```
-
-Para leer desde Supabase:
-
-```bash
-set SUPABASE_URL=tu_url
-set SUPABASE_SERVICE_ROLE_KEY=tu_clave_de_servicio
-python train_loan_default_model.py --source supabase --supabase-table loan_data_clean --sync-supabase
-```
-
-6) Ejecutar con Docker
+2) Ejecutar con Docker
 
 ```bash
 docker build -t loan-risk-model .
 docker run --rm -e SUPABASE_URL=tu_url -e SUPABASE_KEY=tu_clave loan-risk-model
-```
-
-7) Ejecutar scoring e inferencia
-
-```bash
-python predict_loan_default.py --source local --input data/processed/02_loan_data_clean.csv
-```
-
-Con Supabase:
-
-```bash
-python predict_loan_default.py --source supabase --supabase-table loan_data_clean --sync-supabase
 ```
 
 ## Salidas del entrenamiento
