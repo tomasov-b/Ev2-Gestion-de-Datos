@@ -8,6 +8,7 @@ artifacts
 .env
 .env.*
 
+
 # Editor / OS files
 .vscode
 .idea
