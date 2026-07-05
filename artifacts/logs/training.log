@@ -1,1 +1,11 @@
-2026-06-19 22:53:13 | INFO | Inicio del entrenamiento
+2026-07-05 13:22:22 | INFO | Inicio del entrenamiento
+2026-07-05 13:22:23 | INFO | Datos cargados desde archivo: 44993 filas
+2026-07-05 13:22:23 | INFO | Analisis univariado generado
+2026-07-05 13:22:24 | INFO | Analisis bivariado generado
+2026-07-05 13:22:24 | INFO | Iniciando entrenamiento | class_weight=balanced | threshold=0.40
+2026-07-05 13:22:24 | INFO | Entrenamiento completado | tiempo=0.21s | rss=260.3 MB | cpu=0.0%
+2026-07-05 13:22:25 | INFO | Proceso completo | tiempo=2.65s | rss=272.3 MB | cpu=15.6%
+2026-07-05 13:22:25 | INFO | AUC=0.9522 | Gini=0.9043 | FN=111 | FP=1426
+2026-07-05 13:22:25 | INFO | Artefactos generados en: artifacts\ci
+2026-07-05 13:22:25 | INFO | Modelo guardado en: artifacts\ci\model.joblib
+2026-07-05 13:22:25 | INFO | Uso final | rss=272.3 MB | cpu=15.6%

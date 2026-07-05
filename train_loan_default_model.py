@@ -209,7 +209,7 @@ def generar_univariado(df: pd.DataFrame, output_dir: Path, logger: logging.Logge
 	porcentajes = (distribucion / distribucion.sum() * 100).round(2)
 
 	fig, ax = plt.subplots(figsize=(7, 4))
-	sns.barplot(x=distribucion.index.astype(str), y=distribucion.values, ax=ax, palette=["#2F6690", "#E07A5F"])
+	ax.bar(distribucion.index.astype(str), distribucion.values, color=["#2F6690", "#E07A5F"])
 	ax.set_title("Distribucion de la variable objetivo")
 	ax.set_xlabel("loan_status")
 	ax.set_ylabel("Cantidad")
@@ -227,7 +227,16 @@ def generar_bivariado(df: pd.DataFrame, output_dir: Path, logger: logging.Logger
 	archivos = []
 	for columna in ["person_age", "person_income"]:
 		fig, ax = plt.subplots(figsize=(8, 4))
-		sns.boxplot(data=df, x=TARGET_COLUMN, y=columna, ax=ax, palette=["#81B29A", "#F2CC8F"])
+		sns.boxplot(
+			data=df,
+			x=TARGET_COLUMN,
+			y=columna,
+			ax=ax,
+			hue=TARGET_COLUMN,
+			palette={0: "#81B29A", 1: "#F2CC8F"},
+			dodge=False,
+			legend=False,
+		)
 		ax.set_title(f"{columna} vs {TARGET_COLUMN}")
 		fig.tight_layout()
 		archivo = output_dir / f"boxplot_{columna}_vs_target.png"
