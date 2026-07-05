@@ -52,12 +52,16 @@ jobs:
         echo "El archivo limpio se generó correctamente."
 
     - name: Test 3 - Ejecutar carga a Supabase
-      if: ${{ github.event_name != 'pull_request' && secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+      if: ${{ github.event_name != 'pull_request' }}
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: |
         # Usamos --tabla loan_data_test para que las pruebas del CI no sobreescriban tu tabla principal.
+        if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+          echo "Secrets de Supabase no configurados; se omite la carga a Supabase."
+          exit 0
+        fi
         python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_test --batch 10
 
     - name: Test 4 - Entrenar modelo localmente
