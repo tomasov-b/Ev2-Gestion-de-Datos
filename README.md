@@ -169,3 +169,16 @@ python predict_loan_default.py --source supabase --supabase-table loan_data_clea
 - `database.sql` habilita RLS en las tablas operativas y de métricas para permitir lectura BI controlada.
 - Las escrituras a tablas con RLS deben hacerse con `SUPABASE_SERVICE_ROLE_KEY`; la clave anónima queda para lectura BI o clientes de solo lectura.
 - Metabase puede conectarse a PostgreSQL/Supabase y consumir `loan_data_clean`, `loan_model_runs`, `loan_model_feature_importance`, `loan_model_predictions` y las vistas `vw_loan_model_dashboard`, `vw_loan_model_confusion_matrix`, `vw_loan_model_fairness_by_gender`, `vw_loan_model_fairness_by_age_group` y `vw_loan_model_prediction_summary` para construir dashboards de rendimiento, interpretabilidad, equidad y seguimiento operativo.
+
+## Secrets de GitHub
+
+Para que GitHub Actions pueda publicar métricas o cargar a Supabase, crea estos secretos en `Settings > Secrets and variables > Actions > New repository secret`:
+
+- `SUPABASE_URL`: URL del proyecto Supabase.
+- `SUPABASE_SERVICE_ROLE_KEY`: clave de servicio con permisos de escritura para tablas con RLS.
+
+El workflow usa esos secretos solo en `main` o al ejecutarlo manualmente; en `pull_request` mantiene la validación local sin intentar escribir en Supabase.
+
+## Entorno local
+
+Si trabajas en tu máquina, copia [`.env.example`](.env.example) a `.env` y reemplaza los valores con tus credenciales reales. El archivo `.env` está ignorado por Git.
