@@ -1,0 +1,26 @@
+__pycache__
+.venv
+.git
+.github
+artifacts
+
+# Environment / secrets
+.env
+.env.*
+
+
+# Editor / OS files
+.vscode
+.idea
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Models / large artifacts
+*.joblib
+models
+artifacts

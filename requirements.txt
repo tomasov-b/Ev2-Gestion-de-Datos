@@ -1,0 +1,10 @@
+supabase
+joblib
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+psutil
+imbalanced-learn
+python-dotenv
