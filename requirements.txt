@@ -1,9 +1,10 @@
 supabase
-pandas
+joblib
 numpy
+pandas
 scikit-learn
 matplotlib
 seaborn
 psutil
-joblib
 imbalanced-learn
+python-dotenv

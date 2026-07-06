@@ -1,0 +1,8 @@
+.env
+__pycache__/
+artifacts/
+*.log
+*.joblib
+*.png
+*.csv
+!data/processed/02_loan_data_clean.csv

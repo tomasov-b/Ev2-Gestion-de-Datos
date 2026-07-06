@@ -1,13 +1,21 @@
-name: Data Pipeline Testing
+name: Loan Default ML Pipeline
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: loan-default-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
 
 jobs:
-  test-scripts:
+  validate-and-train:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,21 +25,19 @@ jobs:
     - name: Configurar entorno Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10" 
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: "pip"
 
     - name: Instalar dependencias
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Crear directorios y datos de prueba simulados
+    - name: Verificar dataset crudo
       run: |
-        # Recreamos la estructura de carpetas que esperan tus scripts
-        mkdir -p data/raw data/processed
-        
-        # Inyectamos una fila de datos con errores intencionales de formato para probar la limpieza
-        echo "person_age,person_gender,person_education,person_income,person_emp_exp,person_home_ownership,loan_amnt,loan_intent,loan_int_rate,loan_percent_income,cb_person_cred_hist_length,credit_score,previous_loan_defaults_on_file,loan_status" > data/raw/02_loan_data.csv
-        echo " 25 , female, Bachelor ,65000,2, RENT ,25000, PERSONAL ,10.5,0.38,4,750, No , 0" >> data/raw/02_loan_data.csv
+        mkdir -p data/processed artifacts/ci
+        test -f data/raw/02_loan_data.csv
+        echo "Dataset crudo verificado correctamente."
 
     - name: Test 1 - Ejecutar validación y limpieza de datos
       run: |
@@ -43,21 +49,31 @@ jobs:
         echo "El archivo limpio se generó correctamente."
 
     - name: Test 3 - Ejecutar carga a Supabase
-      if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_KEY != '' }}
+      if: ${{ github.event_name != 'pull_request' }}
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: |
         # Usamos --tabla loan_data_test para que las pruebas del CI no sobreescriban tu tabla principal.
+        if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+          echo "Secrets de Supabase no configurados; se omite la carga a Supabase."
+          exit 0
+        fi
         python script_subir_data.py --entrada data/processed/02_loan_data_clean.csv --tabla loan_data_test --batch 10
 
     - name: Test 4 - Entrenar modelo localmente
       run: |
         python train_loan_default_model.py --source local --input data/processed/02_loan_data_clean.csv --artifacts-dir artifacts/ci --model-output artifacts/ci/model.joblib
 
-    - name: Test 5 - Verificar artefactos del modelo
+    - name: Test 5 - Ejecutar inferencia local
+      run: |
+        python predict_loan_default.py --source local --input data/processed/02_loan_data_clean.csv --model-path artifacts/ci/model.joblib --metrics-path artifacts/ci/metrics/model_metrics.json --baseline-path artifacts/ci/metrics/baseline_profile.json --output-dir artifacts/ci/inference
+
+    - name: Test 6 - Verificar artefactos del modelo
       run: |
         test -f artifacts/ci/metrics/model_metrics.json
+        test -f artifacts/ci/metrics/baseline_profile.json
         test -f artifacts/ci/plots/roc_curve.png
         test -f artifacts/ci/plots/confusion_matrix.png
+        test -f artifacts/ci/inference/metrics/drift_metrics.json
         echo "Entrenamiento y artefactos del modelo generados correctamente."
